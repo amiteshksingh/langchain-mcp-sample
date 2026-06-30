@@ -8,7 +8,7 @@ from mcp.server.fastmcp import FastMCP
 PAPER_DIR = "papers"
 
 # Initialize FastMCP server
-mcp = FastMCP("research", port=8001)
+mcp = FastMCP("research")
 
 @mcp.tool()
 def search_papers(topic: str, max_results: int = 5) -> List[str]:
@@ -191,4 +191,9 @@ def generate_search_prompt(topic: str, num_papers: int = 5) -> str:
 
 if __name__ == "__main__":
     # Initialize and run the server
-    mcp.run(transport='sse')
+        # Pull the port assigned by Render dynamically, defaulting to 10000 
+    port_env = int(os.environ.get("PORT", 8001))
+
+    # This forces FastMCP to bind properly to Render's routing interface
+    mcp.run(transport="sse", host="0.0.0.0", port=port_env)
+    #mcp.run(transport='sse')
