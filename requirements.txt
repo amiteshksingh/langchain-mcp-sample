@@ -1,0 +1,29 @@
+# Core
+python-dotenv
+
+# LangChain
+langchain
+langchain-core
+langchain-community
+langchain-google-genai
+langchain-openai
+langchain-ollama
+langchain-text-splitters
+langgraph
+
+# Vector DB
+chromadb
+
+# MCP
+mcp
+
+# LLM SDKs
+openai
+google-genai
+
+# Utilities
+httpx
+aiohttp
+pydantic
+pydantic-settings
+arxiv

@@ -1,0 +1,51 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Run tests",
+      "type": "shell",
+      "command": "python -m pytest -q",
+      "options": {
+        "env": {
+          "PYTHONPATH": "src"
+        }
+      },
+      "group": "test",
+      "problemMatcher": []
+    },
+    {
+      "label": "Run LangChain demo",
+      "type": "shell",
+      "command": "python -m app.main",
+      "options": {
+        "env": {
+          "PYTHONPATH": "src"
+        }
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "Run MCP server",
+      "type": "shell",
+      "command": "python -m mcp_server.server",
+      "options": {
+        "env": {
+          "PYTHONPATH": "src"
+        }
+      },
+      "isBackground": true,
+      "problemMatcher": []
+    },
+    {
+      "label": "Run LangChain MCP agent demo",
+      "type": "shell",
+      "command": "python -m app.agent_mcp_demo",
+      "options": {
+        "env": {
+          "PYTHONPATH": "src"
+        }
+      },
+      "problemMatcher": []
+    }
+  ]
+}
