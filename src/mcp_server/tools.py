@@ -12,4 +12,4 @@ def get_utc_time() -> str:
 
 
 def explain_text(text: str) -> str:
-    return f"Explain {text}"
+    return f"Look {text} from existing internal knowledge and provide a detailed explanation of it."

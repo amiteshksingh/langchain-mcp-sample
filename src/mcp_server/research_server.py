@@ -77,6 +77,58 @@ def search_papers(topic: str, max_results: int = 5) -> List[str]:
     
     return paper_ids
 
+
+#-------------------------
+# MCP Tool for KYC Analyst to retrieve customer risk profile with PBAC authorization
+# -------------------------
+@mcp.tool()
+def get_customer_risk_profile(
+        customer_name: str,
+        user_role: str = "KYC_ANALYST"
+):
+    """
+    Retrieves customer risk profile.
+    Demonstrates PBAC authorization.
+    """
+
+    auth = authorize(
+        user_role=user_role,
+        action="READ",
+        resource="CUSTOMER_RISK_PROFILE"
+    )
+
+    if auth["decision"] != "PERMIT":
+        return {
+            "error": "Access Denied"
+        }
+
+    return CUSTOMERS.get(
+        customer_name,
+        {"error": "Customer not found"}
+    )
+
+@mcp.tool()
+def get_customer_sensitive_details(
+        customer_name: str,
+        user_role: str = "KYC_ANALYST"
+):
+
+    customer = {
+        "beneficialOwner": "Amitesh K Singh",
+        "nationalId": "1234567890"
+    }
+
+    if user_role == "COMPLIANCE_OFFICER":
+        return customer
+
+    # PBAC Obligation:
+    # maskPII = true
+
+    return {
+        "beneficialOwner": "A***** A* R*****",
+        "nationalId":*"********90"
+    }
+
 @mcp.tool()
 def extract_info(paper_id: str) -> str:
     """
