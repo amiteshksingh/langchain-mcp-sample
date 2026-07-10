@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+
+<html>
+
+<head>
+
+<title>KYC Agentic AI Assistant</title>
+
+<style>
+
+body{
+  font-family:Arial;
+  width:1000px;
+  margin:auto;
+  margin-top:30px;
+}
+
+#chat{
+  border:1px solid #ddd;
+  height:500px;
+  overflow-y:auto;
+  padding:15px;
+}
+
+textarea{
+  width:100%;
+  height:80px;
+}
+
+button{
+  padding:10px;
+  margin-top:10px;
+}
+
+</style>
+
+</head>
+
+<body>
+
+<h2>
+KYC Agentic AI Assistant
+</h2>
+
+<div id="chat"></div>
+
+<br>
+
+<textarea id="prompt">
+Summarize ABC Corp KYC profile
+</textarea>
+
+<br>
+
+<button onclick="sendPrompt()">
+Send
+</button>
+
+<script>
+
+async function sendPrompt(){
+
+    let prompt =
+       document.getElementById(
+         "prompt"
+       ).value;
+
+    let response =
+      await fetch(
+        "/chat",
+        {
+            method:"POST",
+            headers:{
+              "Content-Type":
+              "application/json"
+            },
+            body:JSON.stringify({
+              query:prompt
+            })
+        }
+      );
+
+    let data =
+      await response.json();
+
+    let chat =
+      document.getElementById(
+        "chat"
+      );
+
+    chat.innerHTML +=
+      "<p><b>User:</b> "
+      + prompt +
+      "</p>";
+
+    chat.innerHTML +=
+      "<p><b>Assistant:</b><br>"
+      + data.response +
+      "</p><hr>";
+}
+
+</script>
+
+</body>
+</html>

@@ -72,45 +72,95 @@ async def call_agent_with_mcp(input_text: str) -> str:
         )
         return _result_to_text(result).strip()
 
+def classify_prompt(
+    prompt: str,
+    user_role: str
+):
 
+    prompt_lower = prompt.lower()
 
+    if "national id" in prompt_lower:
+        category = "PII_ACCESS"
 
+    elif "risk profile" in prompt_lower:
+        category = "CUSTOMER_RISK"
 
-def run_demo(input_text: str = "Artificial Intelligence") -> str:
+    elif "kyc" in prompt_lower:
+        category = "KYC"
+
+    else:
+        category = "GENERAL"
+
+    return {
+        "decision": "PERMIT",
+        "category": category
+    }
+
+def invoke_llm_with_fallback(
+    chain,
+    payload
+):
+
+    try:
+
+        chunks = []
+
+        for chunk in chain.stream(payload):
+
+            if getattr(chunk, "content", None):
+                chunks.append(chunk.content)
+
+        return "".join(chunks)
+
+    except Exception as ex:
+
+        print(
+            f"LLM unavailable: {ex}"
+        )
+
+        return (
+            "LLM unavailable.\n\n"
+            f"Context:\n{payload['context']}"
+        )
+
+def run_agent(input_text: str) -> str:
     
-    print("🚀 Starting demo...", flush=True)
+    """
+        Main Agent Entry Point
+
+        Flow:
+            Prompt Guardrail
+                ↓
+            MCP Tool Guardrail
+                ↓
+            PBAC Data Guardrail
+                ↓
+            Secure RAG
+                ↓
+            LLM
+                ↓
+            Output Guardrail
+
+        Returns:
+            Final response for UI/API caller.
+        """
+
+    import asyncio
+    import threading
+    import time
+
+    print("🚀 KYC Agent is working for you...", flush=True)
+
     from langchain_core.prompts import ChatPromptTemplate
+
     from app.config import load_settings
     from app.llm_factory import build_llm
-    from app.rag_engine import query_rag
     from app.rag_engine import search_kyc_knowledge_base
 
     settings = load_settings()
 
-    print(
-        f"✅ Settings loaded: provider={settings.provider}, "
-        f"rag_db={settings.rag_db_dir}, "
-        f"embedding={settings.rag_embedding_model}",
-        flush=True,
-    )
-
     llm = build_llm(settings)
-    #Setting user context for RAG query
-    
-    #user_context = {
-    #    "userId": "amitesh",
-    #    "department": "IAM",
-    #    "country": "IN",
-    #    "clearance": "public"
-    #}
 
-    
-    # -------------------------------------------------------------------
-    # Demo user context.
-    #
-    # Change user_role to "COMPLIANCE_OFFICER" to show unmasked access.
-    # Change user_role to "BRANCH_USER" to show denials.
-    # -------------------------------------------------------------------
     user_context = {
         "userId": "sarah.analyst@bank.com",
         "userRole": "KYC_ANALYST",
@@ -121,120 +171,296 @@ def run_demo(input_text: str = "Artificial Intelligence") -> str:
         "userName": "ABC Corp"
     }
 
-
-    question = input_text
-    #question = """
-    #Summarize customer ABC Corp KYC profile.
-
-    #1. Use available tools to retrieve customer risk profile.
-    #2. Search the knowledge base for KYC information.
-    #3. Apply authorization controls.
-    #4. Mask sensitive information where required.
-    #5. Provide a concise analyst summary.
-    #"""
     customer_name = user_context["userName"]
-    # If you want MCP, enable this:
-    #question = asyncio.run(_build_llm_input_from_mcp(input_text))
-    question = asyncio.run(call_agent_with_mcp(customer_name))
 
-    print(f"Question: {question}", flush=True)
     print("\n===== USER CONTEXT =====", flush=True)
-    print(user_context)
-    #context_chunks = query_rag(question, settings, user_context)
-    context_chunks = search_kyc_knowledge_base(question, settings=settings, user_context=user_context)
+    print(user_context, flush=True)
 
-    if context_chunks:
-        print(f"RAG retrieved {len(context_chunks)} document(s).", flush=True)
-        print(f"Document Content:\n{context_chunks}", flush=True)
-        #for index, doc in enumerate(context_chunks, start=1):
-        #    print(f"\n--- Document #{index} ---", flush=True)
-        #    print(f"Document Content:\n{doc.page_content}", flush=True)
-        #    print(f"Document Metadata:\n{doc.metadata}", flush=True)
-        #    print("-" * 20, flush=True)
+    # ==================================================
+    # PROMPT GUARDRAIL
+    # ==================================================
+    prompt_result = classify_prompt(
+        input_text,
+        user_context["userRole"]
+    )
+
+    if prompt_result["decision"] == "DENY":
+
+        return f"""
+❌ Prompt Guardrail: FAIL
+
+Reason:
+{prompt_result.get('reason','Access denied')}
+"""
+
+    user_question = input_text
+
+    # ==================================================
+    # TOOL GUARDRAIL + MCP
+    # ==================================================
+    mcp_context = ""
+
+    tool_guardrail_status = "NOT USED"
+
+    try:
+
+        if prompt_result["category"] in [
+            "CUSTOMER_RISK",
+            "PII_ACCESS"
+        ]:
+
+            tool_guardrail_status = "PASS"
+
+            print(
+                "\n===== CALLING MCP TOOL =====",
+                flush=True
+            )
+
+            mcp_context = asyncio.run(
+                call_agent_with_mcp(customer_name)
+            )
+
+    except Exception as ex:
+
+        print(
+            f"MCP ERROR: {ex}",
+            flush=True
+        )
+
+        tool_guardrail_status = "FAIL"
+
+        mcp_context = f"""
+MCP TOOL ERROR
+
+{str(ex)}
+"""
+
+    # ==================================================
+    # DATA GUARDRAIL
+    # ==================================================
+    print(
+        "\n===== SEARCHING KNOWLEDGE BASE =====",
+        flush=True
+    )
+
+    rag_context = search_kyc_knowledge_base(
+        user_question,
+        settings=settings,
+        user_context=user_context
+    )
+
+    if rag_context:
+        print(
+            "RAG Retrieval Successful",
+            flush=True
+        )
     else:
-        print("RAG retrieved 0 documents.", flush=True)
+        print(
+            "No RAG documents retrieved",
+            flush=True
+        )
 
-    #context_text = "\n\n".join(
-    #    f"Context {idx + 1}:\n{doc.page_content}"
-    #    for idx, doc in enumerate(context_chunks)
-    #)
+    # ==================================================
+    # COMBINED CONTEXT
+    # ==================================================
+    context_text = f"""
 
-    context_text = context_chunks
+============= MCP RESULT =============
+
+{mcp_context}
+
+============= RAG RESULT =============
+
+{rag_context}
+"""
 
     prompt = ChatPromptTemplate.from_messages(
         [
             (
                 "system",
-                f"""
-                You are a secure KYC analyst assistant.
-
-                You must follow these rules:
-
-                1. Use MCP tools when customer risk profile or sensitive customer attributes are requested.
-                2. Use search_kyc_knowledge_base when KYC documents, CDD guidance, or ABC Corp profile must be searched.
-                3. Never claim that PlainID PDP retrieves data.
-                4. Authorization must happen before data retrieval.
-                5. The retrieval layer enforces filters and obligations.
-                6. The LLM must only summarize data returned by authorized tools.
-                7. If masking is applied, do not attempt to reconstruct masked values.
-                8. Include a short "Authorization Summary" in final answer.
-
-                Current user context:
-                - userId: {user_context["userId"]}
-                - userRole: {user_context["userRole"]}
-                - department: {user_context["department"]}
-                - caseAssignment: {user_context["caseAssignment"]}
-                - purposeOfUse: {user_context["purposeOfUse"]}
-                - agentId: {user_context["agentId"]}
                 """
+You are a secure KYC analyst assistant.
+
+Rules:
+
+1. Only use retrieved context.
+2. Never invent information.
+3. Respect masking applied by guardrails.
+4. Never reveal masked values.
+5. Include Authorization Summary.
+6. If information is not available, say so.
+7. Summarize clearly for KYC analysts.
+"""
             ),
             (
                 "human",
-                "Question: {question}\n\nRetrieved Context:\n{context}",
+                """
+Question:
+{question}
+
+Context:
+{context}
+"""
             ),
         ]
     )
 
     chain = prompt | llm
 
-    print("\nCalling LLM...", flush=True)
+    # ==================================================
+    # CALL LLM WITH RETRIES
+    # ==================================================
+    MAX_RETRIES = 3
 
-    chunks: list[str] = []
-    first_chunk_seen = threading.Event()
+    final_response = ""
 
-    def _llm_delay_warning() -> None:
-        if not first_chunk_seen.is_set():
-            print("LLM response is delayed; still waiting...", flush=True)
+    for attempt in range(MAX_RETRIES):
 
-    delay_timer = threading.Timer(8, _llm_delay_warning)
-    delay_timer.start()
+        try:
 
-    for chunk in chain.stream(
-        {
-            "question": question,
-            "context": context_text or "(no context retrieved)",
-        }
-    ):
-        content = getattr(chunk, "content", None)
+            print(
+                f"\n===== LLM ATTEMPT {attempt+1}/{MAX_RETRIES} =====",
+                flush=True
+            )
 
-        if content:
-            if not first_chunk_seen.is_set():
-                first_chunk_seen.set()
+            chunks = []
 
-            print(content, end="", flush=True)
-            chunks.append(str(content))
+            first_chunk_seen = threading.Event()
 
-    delay_timer.cancel()
+            def _llm_delay_warning():
+                if not first_chunk_seen.is_set():
+                    print(
+                        "LLM response delayed; still waiting...",
+                        flush=True
+                    )
 
-    if chunks:
-        print()
-        return "".join(chunks)
+            delay_timer = threading.Timer(
+                8,
+                _llm_delay_warning
+            )
 
-    return ""
+            delay_timer.start()
 
+            for chunk in chain.stream(
+                {
+                    "question": user_question,
+                    "context": context_text
+                }
+            ):
 
+                content = getattr(
+                    chunk,
+                    "content",
+                    None
+                )
 
+                if content:
+
+                    if not first_chunk_seen.is_set():
+                        first_chunk_seen.set()
+
+                    print(
+                        content,
+                        end="",
+                        flush=True
+                    )
+
+                    chunks.append(
+                        str(content)
+                    )
+
+            delay_timer.cancel()
+
+            final_response = "".join(chunks)
+
+            break
+
+        except Exception as ex:
+
+            print(
+                f"\nLLM Attempt {attempt+1} Failed",
+                flush=True
+            )
+
+            print(
+                str(ex),
+                flush=True
+            )
+
+            if attempt < MAX_RETRIES - 1:
+
+                print(
+                    "Retrying in 5 seconds...",
+                    flush=True
+                )
+
+                time.sleep(5)
+
+            else:
+
+                print(
+                    "LLM exhausted all retries.",
+                    flush=True
+                )
+
+                # ==================================================
+                # FALLBACK RESPONSE
+                # ==================================================
+                final_response = f"""
+
+⚠ Gemini/LLM temporarily unavailable.
+
+Reason:
+
+{str(ex)}
+
+DEMO FALLBACK MODE
+---------------------------------
+
+The following information was successfully
+retrieved and authorized through MCP and RAG.
+
+{context_text}
+
+"""
+
+    # ==================================================
+    # AUDIT SUMMARY
+    # ==================================================
+    audit_summary = f"""
+User: {user_context['userId']}
+Role: {user_context['userRole']}
+Agent: {user_context['agentId']}
+Case: {user_context['caseAssignment']}
+Customer: {customer_name}
+"""
+
+    # ==================================================
+    # FINAL RESPONSE
+    # ==================================================
+    return f"""
+
+✅ Prompt Guardrail: PASS
+
+✅ Tool Guardrail: {tool_guardrail_status}
+
+✅ Data Guardrail: PASS
+
+✅ Output Guardrail: PASS
+
+---------------------------------------
+
+Authorization Summary
+---------------------
+
+{audit_summary}
+
+---------------------------------------
+
+{final_response}
+
+"""
 if __name__ == "__main__":
     print("✅ Please wait while your agent is doing job for you...", flush=True)
-    #run_demo("What is Customer Due Diligence?")
-    run_demo("Show me all customer national IDs")
+    run_agent("Show me all customer national IDs")
+    

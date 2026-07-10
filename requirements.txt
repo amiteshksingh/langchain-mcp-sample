@@ -1,5 +1,8 @@
 # Core
 python-dotenv
+fastapi
+uvicor
+
 
 # LangChain
 langchain
