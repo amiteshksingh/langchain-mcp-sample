@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import List
 
-from app.config import Settings
+from .config import Settings
 
 print("RAG_ENGINE LOADED", flush=True)
 _embeddings = None
@@ -221,7 +221,7 @@ def query_rag(question: str, settings: Settings, user_context: dict) -> List[str
     )
 
     
-    from app.pbac import evaluate_document_access
+    from .pbac import evaluate_document_access
 
     authorized_docs = []
 
@@ -358,7 +358,7 @@ def search_kyc_knowledge_base(
     # ---------------------------------------------------------
     # 1. PBAC authorization before retrieval
     # ---------------------------------------------------------
-    from app.pbac import pbac_decision_for_rag
+    from .pbac import pbac_decision_for_rag
     requested_customer = user_context.get("customerName")
     authz = pbac_decision_for_rag(
         user_context=user_context,
@@ -441,7 +441,7 @@ def search_kyc_knowledge_base(
     # ---------------------------------------------------------
     # 4. Mask sensitive output if required by PBAC obligation
     # ---------------------------------------------------------
-    from app.pbac import mask_sensitive_text
+    from .pbac import mask_sensitive_text
     context_blocks = []
 
     obligations = authz.get("obligations", [])

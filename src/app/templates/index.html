@@ -4,32 +4,201 @@
 
 <head>
 
-<title>KYC Agentic AI Assistant</title>
+<title>PBAC Agentic AI KYC Assistant</title>
 
 <style>
 
-body{
-  font-family:Arial;
-  width:1000px;
-  margin:auto;
-  margin-top:30px;
+*{
+    box-sizing:border-box;
+    font-family:Arial, Helvetica, sans-serif;
 }
 
-#chat{
-  border:1px solid #ddd;
-  height:500px;
-  overflow-y:auto;
-  padding:15px;
+body{
+
+    margin:0;
+    background:#f5f5f5;
+}
+
+.header{
+
+    background:#003366;
+
+    color:white;
+
+    display:flex;
+
+    align-items:center;
+
+    justify-content:space-between;
+
+    padding:15px 25px;
+}
+
+.logo{
+
+    font-size:30px;
+
+    font-weight:bold;
+}
+
+.title{
+
+    font-size:24px;
+
+    font-weight:bold;
+}
+
+.container{
+
+    display:flex;
+
+    height:calc(100vh - 80px);
+
+    padding:15px;
+
+    gap:15px;
+}
+
+/* LEFT PANEL */
+
+.left-panel{
+
+    width:30%;
+
+    background:white;
+
+    border-radius:10px;
+
+    padding:15px;
+
+    box-shadow:
+        0px 2px 8px rgba(0,0,0,0.1);
+
+    overflow-y:auto;
+}
+
+/* RIGHT PANEL */
+
+.right-panel{
+
+    width:70%;
+
+    background:white;
+
+    border-radius:10px;
+
+    padding:15px;
+
+    box-shadow:
+        0px 2px 8px rgba(0,0,0,0.1);
+}
+
+.section-title{
+
+    font-size:18px;
+
+    font-weight:bold;
+
+    margin-bottom:10px;
+
+    color:#003366;
+}
+
+.context-grid{
+
+    display:grid;
+
+    grid-template-columns:
+        repeat(2, 1fr);
+
+    gap:10px;
+}
+
+.context-grid label{
+
+    display:block;
+
+    font-size:12px;
+
+    margin-bottom:3px;
+
+    font-weight:bold;
+}
+
+.context-grid input,
+.context-grid select{
+
+    width:100%;
+
+    padding:8px;
 }
 
 textarea{
-  width:100%;
-  height:80px;
+
+    width:100%;
+
+    padding:10px;
+
+    resize:vertical;
+}
+
+#prompt{
+
+    height:150px;
+}
+
+.button-row{
+
+    margin-top:10px;
 }
 
 button{
-  padding:10px;
-  margin-top:10px;
+
+    padding:10px 15px;
+
+    margin:3px;
+
+    border:none;
+
+    border-radius:5px;
+
+    cursor:pointer;
+}
+
+.send-btn{
+
+    background:#0066cc;
+    color:white;
+}
+
+.clear-btn{
+
+    background:#d9534f;
+    color:white;
+}
+
+.demo-btn{
+
+    background:#e9ecef;
+}
+
+#response{
+
+    height:calc(100vh - 180px);
+
+    overflow-y:auto;
+
+    white-space:pre-wrap;
+
+    font-family:Consolas;
+
+    background:#fafafa;
+
+    border:1px solid #ddd;
+
+    padding:20px;
+
+    border-radius:8px;
 }
 
 </style>
@@ -38,68 +207,257 @@ button{
 
 <body>
 
-<h2>
-KYC Agentic AI Assistant
-</h2>
+<div class="header">
 
-<div id="chat"></div>
+    <div class="logo">
+        🏦 MyBank
+    </div>
 
-<br>
+    <div class="title">
+        PBAC Enabled Agentic AI KYC Assistant
+    </div>
 
-<textarea id="prompt">
+</div>
+
+<div class="container">
+
+    <!-- LEFT PANEL -->
+
+    <div class="left-panel">
+
+        <div class="section-title">
+            User Context
+        </div>
+
+        <div class="context-grid">
+
+            <div>
+                <label>User ID</label>
+                <input
+                    id="userId"
+                    value="sarah.analyst@bank.com">
+            </div>
+
+            <div>
+                <label>Role</label>
+                <select id="userRole">
+                    <option>KYC_ANALYST</option>
+                    <option>COMPLIANCE_OFFICER</option>
+                    <option>BRANCH_USER</option>
+                </select>
+            </div>
+
+            <div>
+                <label>Customer</label>
+                <input
+                    id="customer"
+                    value="ABC Corp">
+            </div>
+
+            <div>
+                <label>Case</label>
+                <input
+                    id="caseId"
+                    value="CASE-ABC-1001">
+            </div>
+
+            <div>
+                <label>Purpose</label>
+                <input
+                    id="purpose"
+                    value="KYC_REVIEW">
+            </div>
+
+            <div>
+                <label>Agent</label>
+                <input
+                    id="agentId"
+                    value="kyc-review-agent">
+            </div>
+
+        </div>
+
+        <hr>
+
+        <div class="section-title">
+            Demo Prompts
+        </div>
+
+        <button
+            class="demo-btn"
+            onclick="fillPrompt('What is Customer Due Diligence?')">
+
+            CDD
+        </button>
+
+        <button
+            class="demo-btn"
+            onclick="fillPrompt('Get customer risk profile for ABC Corp')">
+
+            Risk Profile
+        </button>
+
+        <button
+            class="demo-btn"
+            onclick="fillPrompt('Summarize ABC Corp KYC profile')">
+
+            KYC Summary
+        </button>
+
+        <button
+            class="demo-btn"
+            onclick="fillPrompt('Show beneficial owner national ID')">
+
+            PII Test
+        </button>
+
+        <button
+            class="demo-btn"
+            onclick="fillPrompt('Show sanctions investigation details')">
+
+            Access Denied
+        </button>
+
+        <hr>
+
+        <div class="section-title">
+            Chat Prompt
+        </div>
+
+        <textarea id="prompt">
 Summarize ABC Corp KYC profile
-</textarea>
+        </textarea>
 
-<br>
+        <div class="button-row">
 
-<button onclick="sendPrompt()">
-Send
-</button>
+            <button
+                class="send-btn"
+                onclick="sendQuery()">
+
+                Send
+            </button>
+
+            <button
+                class="clear-btn"
+                onclick="clearResponse()">
+
+                Clear Response
+            </button>
+
+        </div>
+
+    </div>
+
+    <!-- RIGHT PANEL -->
+
+    <div class="right-panel">
+
+        <div class="section-title">
+            PBAC Evaluation & Agent Response
+        </div>
+
+        <div id="response">
+Agent response will appear here...
+        </div>
+
+    </div>
+
+</div>
 
 <script>
 
-async function sendPrompt(){
+function fillPrompt(text){
 
-    let prompt =
-       document.getElementById(
-         "prompt"
-       ).value;
+    document.getElementById(
+        "prompt"
+    ).value = text;
+}
+
+function clearResponse(){
+
+    document.getElementById(
+        "response"
+    ).innerHTML =
+        "Response cleared.";
+}
+
+async function sendQuery(){
+
+    const prompt =
+        document.getElementById(
+            "prompt"
+        ).value;
+
+    document.getElementById(
+        "response"
+    ).innerHTML =
+        "Processing request...";
 
     let response =
-      await fetch(
-        "/chat",
-        {
-            method:"POST",
-            headers:{
-              "Content-Type":
-              "application/json"
-            },
-            body:JSON.stringify({
-              query:prompt
-            })
-        }
-      );
+        await fetch(
+            "/chat",
+            {
+                method:"POST",
+
+                headers:{
+                    "Content-Type":
+                    "application/json"
+                },
+
+                body: JSON.stringify({
+
+                    query: prompt,
+
+                    user_context: {
+
+                        userId:
+                            document.getElementById(
+                                "userId"
+                            ).value,
+
+                        userRole:
+                            document.getElementById(
+                                "userRole"
+                            ).value,
+
+                        caseAssignment:
+                            document.getElementById(
+                                "caseId"
+                            ).value,
+
+                        userName:
+                            document.getElementById(
+                                "customer"
+                            ).value,
+
+                        purposeOfUse:
+                            document.getElementById(
+                                "purpose"
+                            ).value,
+
+                        agentId:
+                            document.getElementById(
+                                "agentId"
+                            ).value,
+
+                        department:
+                            "Financial Crime Compliance"
+                    }
+                })
+            }
+        );
 
     let data =
-      await response.json();
+        await response.json();
 
-    let chat =
-      document.getElementById(
-        "chat"
-      );
-
-    chat.innerHTML +=
-      "<p><b>User:</b> "
-      + prompt +
-      "</p>";
-
-    chat.innerHTML +=
-      "<p><b>Assistant:</b><br>"
-      + data.response +
-      "</p><hr>";
+    document.getElementById(
+        "response"
+    ).innerText =
+        data.response;
 }
 
 </script>
 
 </body>
+
 </html>

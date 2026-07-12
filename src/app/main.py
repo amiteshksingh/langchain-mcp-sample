@@ -33,13 +33,48 @@ def _result_to_text(result: Any) -> str:
 
     return str(result)
 
+def init_guardrails():
+    return {
+        "prompt": {
+            "status": "NOT_EVALUATED",
+            "reason": ""
+        },
+        "tool": {
+            "status": "NOT_USED",
+            "reason": ""
+        },
+        "data": {
+            "status": "NOT_EVALUATED",
+            "reason": ""
+        },
+        "output": {
+            "status": "NOT_USED",
+            "reason": ""
+        }
+    }
 
+
+def format_guardrail_status(status: str) -> str:
+    """
+    Convert guardrail status to display icon.
+    """
+
+    mapping = {
+        "PASS": "✅",
+        "FAIL": "❌",
+        "NOT_USED": "⚪",
+        "NOT_EVALUATED": "⚪"
+    }
+
+    return mapping.get(status, "⚪")
+
+#Function to call MCP tool explain_text_tool asynchronously. This has been obselete and replaced with call_agent_with_mcp function which calls get_customer_risk_profile tool. Keeping this for reference.
 async def _build_llm_input_from_mcp(input_text: str) -> str:
     """
     MCP is optional. Keep import lazy so startup does not block.
     """
-    from app.config import load_settings
-    from app.mcp_client import open_mcp_session
+    from .config import load_settings
+    from .mcp_client import open_mcp_session
 
     settings = load_settings()
 
@@ -56,45 +91,26 @@ async def _build_llm_input_from_mcp(input_text: str) -> str:
 # -------------------------------------------------------------------
 # Agent using MCP tools.
 # -------------------------------------------------------------------
-async def call_agent_with_mcp(input_text: str) -> str:
-    from app.config import load_settings
-    from app.mcp_client import open_mcp_session
+async def call_agent_with_mcp(input_text: str, user_context: dict) -> str:
+    from .config import load_settings
+    from .mcp_client import open_mcp_session
 
     settings = load_settings()
 
     async with open_mcp_session(settings) as session:
         print("Calling MCP tool get_customer_risk_profile...", flush=True)
         result = await session.call_tool(
-            "get_customer_risk_profile",
+            "get_customer_risk_profile_tool",
             {
-                "customer_name": input_text
+                "customer_name": input_text,
+                "user_context": user_context
             },
         )
+        print("MCP tool get_customer_risk_profile result...",_result_to_text(result).strip(), flush=True)
         return _result_to_text(result).strip()
 
-def classify_prompt(
-    prompt: str,
-    user_role: str
-):
 
-    prompt_lower = prompt.lower()
 
-    if "national id" in prompt_lower:
-        category = "PII_ACCESS"
-
-    elif "risk profile" in prompt_lower:
-        category = "CUSTOMER_RISK"
-
-    elif "kyc" in prompt_lower:
-        category = "KYC"
-
-    else:
-        category = "GENERAL"
-
-    return {
-        "decision": "PERMIT",
-        "category": category
-    }
 
 def invoke_llm_with_fallback(
     chain,
@@ -123,7 +139,10 @@ def invoke_llm_with_fallback(
             f"Context:\n{payload['context']}"
         )
 
-def run_agent(input_text: str) -> str:
+def run_agent(
+    input_text: str,
+    user_context: dict = None
+) -> str:
     
     """
         Main Agent Entry Point
@@ -153,28 +172,32 @@ def run_agent(input_text: str) -> str:
 
     from langchain_core.prompts import ChatPromptTemplate
 
-    from app.config import load_settings
-    from app.llm_factory import build_llm
-    from app.rag_engine import search_kyc_knowledge_base
+    from .config import load_settings
+    from .llm_factory import build_llm
+    from .rag_engine import search_kyc_knowledge_base
+    from .pbac import classify_prompt
 
     settings = load_settings()
 
     llm = build_llm(settings)
 
-    user_context = {
-        "userId": "sarah.analyst@bank.com",
-        "userRole": "KYC_ANALYST",
-        "department": "Financial Crime Compliance",
-        "caseAssignment": "CASE-ABC-1001",
-        "purposeOfUse": "KYC_REVIEW",
-        "agentId": "kyc-review-agent",
-        "userName": "ABC Corp"
-    }
+    if not user_context:
+        user_context = {
+            "userId": "sarah.analyst@bank.com",
+            "userRole": "KYC_ANALYST",
+            "department": "Financial Crime Compliance",
+            "caseAssignment": "CASE-ABC-1001",
+            "purposeOfUse": "KYC_REVIEW",
+            "agentId": "kyc-review-agent",
+            "userName": "ABC Corp"
+        }
 
     customer_name = user_context["userName"]
 
     print("\n===== USER CONTEXT =====", flush=True)
     print(user_context, flush=True)
+
+    guardrails = init_guardrails()
 
     # ==================================================
     # PROMPT GUARDRAIL
@@ -184,14 +207,31 @@ def run_agent(input_text: str) -> str:
         user_context["userRole"]
     )
 
-    if prompt_result["decision"] == "DENY":
+    prompt_result = classify_prompt(
+    input_text,
+    user_context["userRole"]
+    )
 
-        return f"""
-❌ Prompt Guardrail: FAIL
+    if prompt_result["decision"] == "PERMIT":
 
-Reason:
-{prompt_result.get('reason','Access denied')}
-"""
+        guardrails["prompt"] = {
+            "status": "PASS",
+            "reason": (
+                f"Category="
+                f"{prompt_result['category']}"
+            )
+        }
+
+    else:
+
+        guardrails["prompt"] = {
+            "status": "FAIL",
+            "reason":
+            prompt_result.get(
+                "reason",
+                "Prompt denied"
+            )
+        }
 
     user_question = input_text
 
@@ -200,44 +240,56 @@ Reason:
     # ==================================================
     mcp_context = ""
 
-    tool_guardrail_status = "NOT USED"
+    from .pbac import authorize_tool_access
 
-    try:
+    tool_name = (
+        "get_customer_risk_profile"
+    )
 
-        if prompt_result["category"] in [
-            "CUSTOMER_RISK",
-            "PII_ACCESS"
-        ]:
+    tool_decision = authorize_tool_access(
+        user_role=user_context["userRole"],
+        agent_id=user_context["agentId"],
+        tool_name=tool_name
+    )
 
-            tool_guardrail_status = "PASS"
+    if tool_decision["decision"] == "PERMIT":
 
-            print(
-                "\n===== CALLING MCP TOOL =====",
-                flush=True
+        guardrails["tool"] = {
+            "status": "PASS",
+            "reason": (
+                tool_decision["reason"]
             )
+        }
 
-            mcp_context = asyncio.run(
-                call_agent_with_mcp(customer_name)
+        mcp_context = asyncio.run(
+            call_agent_with_mcp(
+                customer_name,
+                user_context
+          
             )
-
-    except Exception as ex:
-
-        print(
-            f"MCP ERROR: {ex}",
-            flush=True
         )
 
-        tool_guardrail_status = "FAIL"
+    else:
 
-        mcp_context = f"""
-MCP TOOL ERROR
+        guardrails["tool"] = {
+            "status": "FAIL",
+            "reason": (
+                tool_decision["reason"]
+            )
+        }
 
-{str(ex)}
-"""
+        mcp_context = (
+            "Tool execution blocked."
+        )
+
+    tool_guardrail_status = (
+        guardrails["tool"]["status"]
+    )
 
     # ==================================================
     # DATA GUARDRAIL
     # ==================================================
+    from .pbac import evaluate_data_guardrail
     print(
         "\n===== SEARCHING KNOWLEDGE BASE =====",
         flush=True
@@ -248,6 +300,11 @@ MCP TOOL ERROR
         settings=settings,
         user_context=user_context
     )
+
+    guardrails["data"] = (
+        evaluate_data_guardrail(rag_context)
+    )
+       
 
     if rag_context:
         print(
@@ -265,14 +322,14 @@ MCP TOOL ERROR
     # ==================================================
     context_text = f"""
 
-============= MCP RESULT =============
+    ============= MCP RESULT =============
 
-{mcp_context}
+    {mcp_context}
 
-============= RAG RESULT =============
+    ============= RAG RESULT =============
 
-{rag_context}
-"""
+    {rag_context}
+    """
 
     prompt = ChatPromptTemplate.from_messages(
         [
@@ -408,58 +465,104 @@ Context:
                 # ==================================================
                 final_response = f"""
 
-⚠ Gemini/LLM temporarily unavailable.
+                ⚠ Gemini/LLM temporarily unavailable.
 
-Reason:
+                Reason:
 
-{str(ex)}
+                {str(ex)}
 
-DEMO FALLBACK MODE
----------------------------------
+                DEMO FALLBACK MODE
+                ---------------------------------
 
-The following information was successfully
-retrieved and authorized through MCP and RAG.
+                The following information was successfully
+                retrieved and authorized through MCP and RAG.
 
-{context_text}
+                {context_text}
 
-"""
+                """
 
+    
     # ==================================================
     # AUDIT SUMMARY
     # ==================================================
+
     audit_summary = f"""
-User: {user_context['userId']}
-Role: {user_context['userRole']}
-Agent: {user_context['agentId']}
-Case: {user_context['caseAssignment']}
-Customer: {customer_name}
-"""
+    User: {user_context.get('userId')}
+    Role: {user_context.get('userRole')}
+    Department: {user_context.get('department')}
+    Agent: {user_context.get('agentId')}
+    Case: {user_context.get('caseAssignment')}
+    Customer: {customer_name}
+    Purpose: {user_context.get('purposeOfUse')}
+    """
+    # ==================================================
+    # OUTPUT GUARDRAIL
+    # ==================================================
+    from .pbac import evaluate_output_guardrail
+    guardrails["output"] = evaluate_output_guardrail(
+        user_context["userRole"],
+        final_response
+    )
 
     # ==================================================
     # FINAL RESPONSE
     # ==================================================
+
     return f"""
 
-✅ Prompt Guardrail: PASS
+    ==================================================
+    GUARDRAIL STATUS
+    ==================================================
 
-✅ Tool Guardrail: {tool_guardrail_status}
+    {format_guardrail_status(guardrails["prompt"]["status"])}
+    Prompt Guardrail:
+    {guardrails["prompt"]["status"]}
 
-✅ Data Guardrail: PASS
+    Reason:
+    {guardrails["prompt"]["reason"]}
 
-✅ Output Guardrail: PASS
+    --------------------------------------------------
 
----------------------------------------
+    {format_guardrail_status(guardrails["tool"]["status"])}
+    Tool Guardrail:
+    {guardrails["tool"]["status"]}
 
-Authorization Summary
----------------------
+    Reason:
+    {guardrails["tool"]["reason"]}
 
-{audit_summary}
+    --------------------------------------------------
 
----------------------------------------
+    {format_guardrail_status(guardrails["data"]["status"])}
+    Data Guardrail:
+    {guardrails["data"]["status"]}
 
-{final_response}
+    Reason:
+    {guardrails["data"]["reason"]}
 
-"""
+    --------------------------------------------------
+
+    {format_guardrail_status(guardrails["output"]["status"])}
+    Output Guardrail:
+    {guardrails["output"]["status"]}
+
+    Reason:
+    {guardrails["output"]["reason"]}
+
+    ==================================================
+    AUTHORIZATION SUMMARY
+    ==================================================
+
+    {audit_summary}
+
+    ==================================================
+    AGENT RESPONSE
+    ==================================================
+
+    {final_response}
+
+    """
+
+
 if __name__ == "__main__":
     print("✅ Please wait while your agent is doing job for you...", flush=True)
     run_agent("Show me all customer national IDs")

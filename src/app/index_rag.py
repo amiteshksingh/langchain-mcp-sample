@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from app.config import load_settings
-from app.rag import ensure_vector_db
+from .config import load_settings
+from .rag import ensure_vector_db
 
 
 def main() -> None:

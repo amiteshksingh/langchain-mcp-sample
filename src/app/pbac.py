@@ -1,59 +1,27 @@
 # app/policy/pbac.py
 
+# -------------------------
+# Mock PBAC Authorization
+# -------------------------
+
 def classify_prompt(
     prompt: str,
     user_role: str
 ):
-    """
-    Prompt Guardrail
-
-    Determines:
-      - Intent
-      - Topic
-      - Allow/Deny
-    """
 
     prompt_lower = prompt.lower()
 
-    #
-    # KYC
-    #
-    if "kyc" in prompt_lower:
-        category = "KYC"
+    if "national id" in prompt_lower:
+        category = "PII_ACCESS"
 
-    #
-    # Risk Profile
-    #
     elif "risk profile" in prompt_lower:
         category = "CUSTOMER_RISK"
 
-    #
-    # Beneficial Owner / National ID
-    #
-    elif (
-        "national id" in prompt_lower
-        or "beneficial owner" in prompt_lower
-    ):
-        category = "PII_ACCESS"
+    elif "kyc" in prompt_lower:
+        category = "KYC"
 
     else:
         category = "GENERAL"
-
-    #
-    # Prompt Guardrail Policy
-    #
-    if (
-        category == "PII_ACCESS"
-        and user_role not in [
-            "KYC_ANALYST",
-            "COMPLIANCE_OFFICER"
-        ]
-    ):
-        return {
-            "decision": "DENY",
-            "category": category,
-            "reason": "User not authorized for PII questions."
-        }
 
     return {
         "decision": "PERMIT",
@@ -64,15 +32,10 @@ def classify_prompt(
 def authorize_tool_access(
     user_role: str,
     agent_id: str,
-    tool_name: str,
+    tool_name: str
 ):
-    """
-    Tool Guardrail
 
-    Protect MCP tools.
-    """
-
-    tool_permissions = {
+    permissions = {
 
         "get_customer_risk_profile": [
             "KYC_ANALYST",
@@ -84,7 +47,7 @@ def authorize_tool_access(
         ]
     }
 
-    allowed_roles = tool_permissions.get(
+    allowed_roles = permissions.get(
         tool_name,
         []
     )
@@ -93,20 +56,99 @@ def authorize_tool_access(
 
         return {
             "decision": "PERMIT",
-            "tool": tool_name,
-            "agent": agent_id
+            "reason": (
+                f"{user_role} allowed to execute "
+                f"{tool_name}"
+            )
         }
 
     return {
         "decision": "DENY",
-        "tool": tool_name,
-        "agent": agent_id
+        "reason": (
+            f"{user_role} not permitted to "
+            f"execute {tool_name}"
+        )
+    }
+
+def evaluate_data_guardrail(
+    rag_context: str
+):
+
+    rag_lower = (
+        rag_context or ""
+    ).lower()
+
+    deny_patterns = [
+
+        "access denied",
+
+        "not permitted",
+
+        "user role is not permitted",
+
+        "no authorized",
+
+        "permission denied",
+    ]
+
+    for pattern in deny_patterns:
+
+        if pattern in rag_lower:
+
+            return {
+                "status": "FAIL",
+                "reason": rag_context
+            }
+
+    return {
+        "status": "PASS",
+        "reason": (
+            "Authorized documents retrieved"
+        )
+    }
+
+def evaluate_output_guardrail(
+    user_role: str,
+    final_response: str
+):
+
+    response = (
+        final_response or ""
+    ).lower()
+
+    if "********" in response:
+
+        return {
+            "status": "PASS",
+            "reason": "PII successfully masked"
+        }
+
+    if user_role == "COMPLIANCE_OFFICER":
+
+        return {
+            "status": "NOT_USED",
+            "reason": (
+                "User allowed to view full PII"
+            )
+        }
+
+    if "national id" in response:
+
+        return {
+            "status": "FAIL",
+            "reason": (
+                "PII exposed without masking"
+            )
+        }
+
+    return {
+        "status": "NOT_USED",
+        "reason": (
+            "No sensitive output returned"
+        )
     }
 
 
-# -------------------------
-# Mock PBAC Authorization
-# -------------------------
 def authorize(user_role, action, resource):
 
     if user_role == "KYC_ANALYST":
@@ -231,6 +273,26 @@ def mask_sensitive_text(text: str) -> str:
         masked = masked.replace(source, target)
 
     return masked
+
+
+
+def mask_national_id(national_id: str) -> str:
+    if not national_id or len(national_id) < 2:
+        return "********"
+    return "*" * (len(national_id) - 2) + national_id[-2:]
+
+
+def mask_name(name: str) -> str:
+    if not name:
+        return ""
+    parts = name.split()
+    masked_parts = []
+    for part in parts:
+        if len(part) <= 2:
+            masked_parts.append(part[0] + "*")
+        else:
+            masked_parts.append(part[0] + "*" * (len(part) - 2) + part[-1])
+    return " ".join(masked_parts)
 
 def evaluate_document_access(
     doc_metadata: dict,

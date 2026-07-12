@@ -6,9 +6,9 @@ from typing import Any
 
 import httpx
 
-from app.config import load_settings
-from app.llm_factory import build_llm
-from app.mcp_client import open_mcp_session
+from .config import load_settings
+from .llm_factory import build_llm
+from .mcp_client import open_mcp_session
 
 
 def _result_to_text(result: Any) -> str:

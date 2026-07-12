@@ -6,7 +6,7 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import AsyncGenerator
 
-from app.config import Settings
+from .config import Settings
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO, format="[%(name)s] %(message)s")

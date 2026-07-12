@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from app.config import load_settings
-from app.rag_engine import rebuild_vector_db_google
+from .config import load_settings
+from .rag_engine import rebuild_vector_db_google
 
 
 def main() -> None:

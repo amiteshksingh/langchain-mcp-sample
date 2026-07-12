@@ -7,8 +7,17 @@ from contextlib import asynccontextmanager
 from mcp.server import Server
 from mcp.server.fastmcp import FastMCP
 from mcp.types import Tool
+from typing import Optional, Dict, Any
 
-from .tools import add_numbers, explain_text, get_utc_time
+from .tools import add_numbers, explain_text, get_utc_time, get_customer_risk_profile
+import logging
+
+logger = logging.getLogger(__name__)
+
+logger.info(
+    "MCP Server initialized.",
+    flush=True
+)
 
 # FastMCP with explicit ServerSession
 mcp = FastMCP("sample-tools")
@@ -32,158 +41,25 @@ def explain_text_tool(text: str) -> str:
     return explain_text(text)
 
 
+@mcp.tool()
+def get_customer_risk_profile_tool(
+    customer_name: str,
+    user_context: dict
+) -> Dict[str, Any]:
+    """Retrieve customer risk profile with PBAC enforcement."""
+    return get_customer_risk_profile(
+        customer_name=customer_name,
+        user_context=user_context
+    )
+
 def run() -> None:
     """Run MCP server with stdio transport for robustness."""
     # Silently run stdio transport; all output must be JSONRPC for client parsing
     mcp.run(transport="stdio")
 
 
-# -------------------------------------------------------------------
-# Mock customer data
-# In real implementation, this may call CRM, KYC platform, case system,
-# risk engine, screening system, or customer master.
-# -------------------------------------------------------------------
-CUSTOMERS = {
-    "ABC Corp": {
-        "customerName": "ABC Corp",
-        "customerId": "CUST-2026-001",
-        "caseId": "CASE-ABC-1001",
-        "riskRating": "Medium",
-        "kycStatus": "Approved",
-        "country": "Saudi Arabia",
-        "primaryBusiness": "Industrial Manufacturing",
-        "annualRevenue": "USD 150 Million",
-        "beneficialOwner": "Amitesh K Singh",
-        "nationalId": "1234567890",
-    }
-}
 
 
-# -------------------------------------------------------------------
-# Mock PBAC / PlainID-style decision.
-#
-# Replace this function later with actual PlainID PDP REST call.
-# -------------------------------------------------------------------
-def authorize_tool_access(
-    user_role: str,
-    agent_id: str,
-    tool_name: str,
-    customer_name: str,
-    action: str,
-):
-    """
-    Mock PBAC decision for MCP tool access.
-
-    Decision model:
-      Subject  = user_role + agent_id
-      Action   = READ_RISK_PROFILE / READ_SENSITIVE_DETAILS
-      Resource = Customer / KYC profile
-      Context  = purpose = KYC_REVIEW
-    """
-
-    if tool_name == "get_customer_risk_profile":
-        if user_role in ["KYC_ANALYST", "COMPLIANCE_OFFICER"]:
-            return {
-                "decision": "PERMIT",
-                "obligations": ["audit"],
-                "reason": "User role is allowed to access customer risk profile.",
-            }
-
-    if tool_name == "get_customer_sensitive_details":
-        if user_role == "COMPLIANCE_OFFICER":
-            return {
-                "decision": "PERMIT",
-                "obligations": ["audit"],
-                "reason": "Compliance officer can view sensitive details.",
-            }
-
-        if user_role == "KYC_ANALYST":
-            return {
-                "decision": "PERMIT_WITH_OBLIGATIONS",
-                "obligations": ["maskPII", "audit"],
-                "reason": "KYC analyst can view sensitive details with masking.",
-            }
-
-    return {
-        "decision": "DENY",
-        "obligations": ["audit"],
-        "reason": "User role is not authorized for this MCP tool/action.",
-    }
-
-
-def mask_national_id(national_id: str) -> str:
-    if not national_id or len(national_id) < 2:
-        return "********"
-    return "*" * (len(national_id) - 2) + national_id[-2:]
-
-
-def mask_name(name: str) -> str:
-    if not name:
-        return ""
-    parts = name.split()
-    masked_parts = []
-    for part in parts:
-        if len(part) <= 2:
-            masked_parts.append(part[0] + "*")
-        else:
-            masked_parts.append(part[0] + "*" * (len(part) - 2) + part[-1])
-    return " ".join(masked_parts)
-
-
-@mcp.tool()
-def get_customer_risk_profile(
-    customer_name: str,
-    user_role: str = "KYC_ANALYST",
-    agent_id: str = "kyc-review-agent",
-):
-    """
-    Retrieves customer risk profile for KYC review.
-
-    This MCP tool demonstrates:
-      - Agent calling a tool
-      - Tool-level authorization
-      - PBAC decision before returning customer data
-    """
-
-    tool_name = "get_customer_risk_profile"
-
-    auth = authorize_tool_access(
-        user_role=user_role,
-        agent_id=agent_id,
-        tool_name=tool_name,
-        customer_name=customer_name,
-        action="READ_RISK_PROFILE",
-    )
-
-    if auth["decision"] == "DENY":
-        return {
-            "status": "DENIED",
-            "decision": auth,
-            "message": "Access denied by PBAC policy.",
-        }
-
-    customer = CUSTOMERS.get(customer_name)
-
-    if not customer:
-        return {
-            "status": "NOT_FOUND",
-            "message": f"Customer not found: {customer_name}",
-        }
-
-    return {
-        "status": "SUCCESS",
-        "decision": auth,
-        "data": {
-            "customerName": customer["customerName"],
-            "customerId": customer["customerId"],
-            "caseId": customer["caseId"],
-            "riskRating": customer["riskRating"],
-            "kycStatus": customer["kycStatus"],
-            "country": customer["country"],
-            "primaryBusiness": customer["primaryBusiness"],
-            "annualRevenue": customer["annualRevenue"],
-        },
-    }
 
 
 @mcp.tool()
@@ -202,7 +78,7 @@ def get_customer_sensitive_details(
     """
 
     tool_name = "get_customer_sensitive_details"
-
+    from app.pbac import authorize_tool_access
     auth = authorize_tool_access(
         user_role=user_role,
         agent_id=agent_id,

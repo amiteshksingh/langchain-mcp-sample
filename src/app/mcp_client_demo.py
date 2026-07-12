@@ -3,8 +3,8 @@ from __future__ import annotations
 import asyncio
 from typing import Any
 
-from app.config import load_settings
-from app.mcp_client import open_mcp_session
+from .config import load_settings
+from .mcp_client import open_mcp_session
 
 
 def _result_to_text(result: Any) -> str:

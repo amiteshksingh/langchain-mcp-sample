@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 import shutil
 
-from app.config import Settings
+from .config import Settings
 # THIS IS FOR HUGGINGFACE EMBEDDINGS ONLY. Google embeddings are lazy-loaded in rag_engine.py
 
 # ✅ Load documents (lightweight, safe)
