@@ -200,8 +200,54 @@ button{
 
     border-radius:8px;
 }
+#response h1,
+#response h2,
+#response h3,
+#response h4 {
+
+    color:#003366;
+
+    margin-top:12px;
+}
+
+#response strong {
+
+    color:#003366;
+}
+
+#response ul {
+
+    margin-left:20px;
+}
+
+#response li {
+
+    margin-bottom:6px;
+}
+
+#response code {
+
+    background:#efefef;
+
+    padding:2px 4px;
+
+    border-radius:4px;
+}
+
+#response pre {
+
+    white-space:pre-wrap;
+}
 
 </style>
+<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+
+<script>
+    marked.setOptions({
+        breaks: true,
+        gfm: true
+    });
+</script>
 
 </head>
 
@@ -447,13 +493,26 @@ async function sendQuery(){
             }
         );
 
-    let data =
-        await response.json();
+    try {
 
-    document.getElementById(
-        "response"
-    ).innerText =
-        data.response;
+        let data =
+            await response.json();
+
+        document.getElementById(
+            "response"
+        ).innerHTML =
+            marked.parse(data.response);
+
+    }
+    catch(error){
+
+        document.getElementById(
+            "response"
+        ).innerHTML =
+            "<b style='color:red'>Error:</b><br>" +
+            error;
+    }
+
 }
 
 </script>

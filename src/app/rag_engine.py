@@ -312,7 +312,7 @@ def build_chroma_where_filter(raw_filter: dict) -> dict:
 # -------------------------------------------------------------------
 # Secure RAG tool.
 #
-# This is the key part of your demo:
+# This is the key part of demo:
 #   1. Call PBAC first
 #   2. Convert decision into metadata filters
 #   3. Retrieve only authorized chunks
@@ -359,7 +359,15 @@ def search_kyc_knowledge_base(
     # 1. PBAC authorization before retrieval
     # ---------------------------------------------------------
     from .pbac import pbac_decision_for_rag
-    requested_customer = user_context.get("customerName")
+    requested_customer = (
+        user_context.get("customerName")
+        or user_context.get("userName")
+    )
+
+    print(
+        f"PBAC Requested Customer={requested_customer}",
+        flush=True
+    )
     authz = pbac_decision_for_rag(
         user_context=user_context,
         action="READ_KYC_DOCUMENTS",
@@ -428,10 +436,22 @@ def search_kyc_knowledge_base(
         if (
             classification_normalized in ["SENSITIVE", "RESTRICTED"]
             and case_id == user_context.get("caseAssignment")
-            and customer == customer_name
+            and customer == requested_customer
         ):
             safe_docs.append(doc)
 
+    print("\n===== SAFE DOCS =====")
+    print(f"Retrieved Docs : {len(retrieved_docs)}")
+    print(f"Safe Docs      : {len(safe_docs)}")
+
+    for d in safe_docs:
+        print(
+            f"SAFE -> {d.metadata.get('fileName')} "
+            f"{d.metadata}",
+            flush=True
+        )
+
+    print("=====================\n")
     if not safe_docs:
         return (
             "No authorized KYC documents were found for this query.\n"
@@ -442,6 +462,7 @@ def search_kyc_knowledge_base(
     # 4. Mask sensitive output if required by PBAC obligation
     # ---------------------------------------------------------
     from .pbac import mask_sensitive_text
+    from .pbac import mask_financial_data
     context_blocks = []
 
     obligations = authz.get("obligations", [])
@@ -451,6 +472,15 @@ def search_kyc_knowledge_base(
 
         if "maskPII" in obligations:
             content = mask_sensitive_text(content)
+        
+        #
+        # Financial Data Masked
+        #
+        if "maskFinancialData" in obligations:
+            content = mask_financial_data(
+                content,
+                user_context.get("userRole")
+            )
 
         context_blocks.append(
             f"""

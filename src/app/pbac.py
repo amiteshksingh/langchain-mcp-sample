@@ -3,6 +3,7 @@
 # -------------------------
 # Mock PBAC Authorization
 # -------------------------
+import re
 
 def classify_prompt(
     prompt: str,
@@ -116,36 +117,34 @@ def evaluate_output_guardrail(
         final_response or ""
     ).lower()
 
-    if "********" in response:
+    #
+    # PII Masked
+    #
+    if "********90" in response:
 
         return {
             "status": "PASS",
-            "reason": "PII successfully masked"
+            "reason":
+                "PII successfully masked"
         }
 
+    
+
+    #
+    # Compliance Officer
+    #
     if user_role == "COMPLIANCE_OFFICER":
 
         return {
             "status": "NOT_USED",
-            "reason": (
-                "User allowed to view full PII"
-            )
-        }
-
-    if "national id" in response:
-
-        return {
-            "status": "FAIL",
-            "reason": (
-                "PII exposed without masking"
-            )
+            "reason":
+                "Full data view permitted"
         }
 
     return {
         "status": "NOT_USED",
-        "reason": (
-            "No sensitive output returned"
-        )
+        "reason":
+            "No masking required"
     }
 
 
@@ -194,11 +193,29 @@ def pbac_decision_for_rag(
             "obligations": []
         }
 
-    if role != "KYC_ANALYST":
+    # ---------------------------------------------------------
+    # Role Validation
+    # ---------------------------------------------------------
+
+    allowed_roles = [
+
+        "KYC_ANALYST",
+
+        "COMPLIANCE_OFFICER"
+    ]
+
+    if role not in allowed_roles:
+
         return {
+
             "decision": "DENY",
-            "reason": "User role is not permitted to read KYC documents",
+
+            "reason":
+                f"Role '{role}' is not authorized "
+                "for READ_KYC_DOCUMENTS",
+
             "allowedFilters": [],
+
             "obligations": []
         }
 
@@ -235,12 +252,26 @@ def pbac_decision_for_rag(
 
     allowed_filters.append(sensitive_filter)
 
+    if role != "COMPLIANCE_OFFICER":
+        obligations.append("maskFinancialData")
 
     if role == "KYC_ANALYST":
         obligations.append("maskPII")
 
     if role == "COMPLIANCE_OFFICER":
         obligations.append("allowPII")
+
+    print(
+        f"""
+    PBAC DECISION = PERMIT
+    Role            = {role}
+    Customer        = {requested_customer}
+    Case Assignment = {assigned_case}
+    Allowed Filters = {allowed_filters}
+    Obligations     = {obligations}
+    """,
+        flush=True
+    )
 
     return {
         "decision": "PERMIT",
@@ -250,31 +281,71 @@ def pbac_decision_for_rag(
     }
 
 
-def mask_sensitive_text(text: str) -> str:
+def mask_sensitive_text(
+    text: str
+):
     """
-    Simple demo masking.
-    In production, use a proper PII detection service such as Microsoft Presidio,
-    DLP service, or policy-driven redaction service.
+    Output Guardrail
+
+    Masks:
+      - PII
     """
+
+    # ==========================================
+    # PII MASKING
+    # ==========================================
 
     replacements = {
-        "Ahmed Al Rahman": "A***** A* R*****",
-        "1234567890": "********90",
-        "John Smith": "J*** S****",
-        "CUST-2026-001": "CUST-****-***",
-        "USD 150": "USD ***",
-        "Saudi Arabia": "S***** A******",
-        "Industrial Manufacturing": "I******** M*********",
-        "Amitesh K Singh": "A***** K S*****",
+
+        "Ahmed Al Rahman":
+            "A***** A* R*****",
+        "Amitesh Kumar Singh":
+            "A***** K* S****",
+        "1234567890":
+            "********90",
+
+        "John Smith":
+            "J*** S****"
     }
 
-    masked = text
+    result = text
+
     for source, target in replacements.items():
-        masked = masked.replace(source, target)
 
-    return masked
+        result = result.replace(
+            source,
+            target
+        )
+
+    
+    return result
 
 
+def mask_financial_data(
+    text: str,
+    user_role: str
+):
+
+    if user_role == "COMPLIANCE_OFFICER":
+        return text
+
+    revenue_pattern = r"USD\s+(\d+)\s+Million"
+
+    def replacer(match):
+
+        revenue = int(match.group(1))
+
+        if revenue > 1:
+            return "USD ********"
+
+        return match.group(0)
+
+    return re.sub(
+        revenue_pattern,
+        replacer,
+        text,
+        flags=re.IGNORECASE
+    )
 
 def mask_national_id(national_id: str) -> str:
     if not national_id or len(national_id) < 2:

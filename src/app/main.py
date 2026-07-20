@@ -182,6 +182,11 @@ def run_agent(
     llm = build_llm(settings)
 
     if not user_context:
+        print("\n======================================")
+        print("USER CONTEXT RECEIVED FROM UI")
+        print("======================================")
+        print(user_context)
+        print("======================================\n")
         user_context = {
             "userId": "sarah.analyst@bank.com",
             "userRole": "KYC_ANALYST",
@@ -205,11 +210,6 @@ def run_agent(
     prompt_result = classify_prompt(
         input_text,
         user_context["userRole"]
-    )
-
-    prompt_result = classify_prompt(
-    input_text,
-    user_context["userRole"]
     )
 
     if prompt_result["decision"] == "PERMIT":
@@ -317,6 +317,9 @@ def run_agent(
             flush=True
         )
 
+    print("\n=========== FINAL RAG CONTEXT SENT TO LLM ==========")
+    print(rag_context)
+    print("===================================================\n")
     # ==================================================
     # COMBINED CONTEXT
     # ==================================================
@@ -507,7 +510,14 @@ Context:
     # ==================================================
     # FINAL RESPONSE
     # ==================================================
+    print("\n======================================")
+    from .pbac import mask_financial_data
 
+    final_response = mask_financial_data(
+        final_response,
+        user_context["userRole"]
+    )
+    
     return f"""
 
     ==================================================
